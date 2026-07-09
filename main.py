@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -20,10 +14,6 @@ from sklearn.metrics import (
     recall_score,
     f1_score
 )
-
-
-# In[ ]:
-
 
 DATA_ROOT = Path("MURA-v1.1_files")
 
@@ -55,10 +45,6 @@ def make_dataframe(csv_path):
 train_df = make_dataframe(TRAIN_IMAGE_CSV)
 valid_df = make_dataframe(VALID_IMAGE_CSV)
 
-
-# In[ ]:
-
-
 def get_body_part(path):
     for part in Path(path).parts:
         if part.startswith("XR_"):
@@ -71,10 +57,6 @@ valid_df["body_part"] = valid_df["path"].apply(get_body_part)
 print("\nValidation images per body part:")
 print(valid_df["body_part"].value_counts())
 
-
-# In[ ]:
-
-
 train_missing = train_df["path"].apply(lambda p: not Path(p).exists()).sum()
 valid_missing = valid_df["path"].apply(lambda p: not Path(p).exists()).sum()
 
@@ -83,10 +65,6 @@ print("Missing valid image files:", valid_missing)
 
 if train_missing > 0 or valid_missing > 0:
     raise FileNotFoundError("Some image paths are wrong. Check DATA_ROOT and fix_path().")
-
-
-# In[ ]:
-
 
 def load_image(path, label):
     image = tf.io.read_file(path)
@@ -110,10 +88,6 @@ valid_ds = tf.data.Dataset.from_tensor_slices((valid_paths, valid_labels))
 train_ds = train_ds.shuffle(buffer_size=len(train_paths), seed=42, reshuffle_each_iteration=True).map(load_image, num_parallel_calls=tf.data.AUTOTUNE).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 valid_ds = valid_ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-
-# In[ ]:
-
-
 # look at one batch before training
 
 for images, labels in train_ds.take(1):
@@ -135,10 +109,6 @@ for images, labels in train_ds.take(1):
 
     plt.show()
 
-
-# In[ ]:
-
-
 for images, labels in valid_ds.take(1):
     print("\nImage batch shape:", images.shape)
     print("Label batch shape:", labels.shape)
@@ -158,10 +128,6 @@ for images, labels in valid_ds.take(1):
 
     plt.show()
 
-
-# In[ ]:
-
-
 # weights from test.py
 counts = train_df["label"].value_counts()
 
@@ -176,10 +142,6 @@ class_weight = {
 
 print("\nClass weights:")
 print(class_weight)
-
-
-# In[ ]:
-
 
 data_augmentation = keras.Sequential([
     layers.RandomRotation(10/360),
@@ -220,10 +182,6 @@ model.compile(
 
 #model.summary()
 
-
-# In[ ]:
-
-
 early_stopping = keras.callbacks.EarlyStopping(
     monitor="val_auc",
     mode="max",
@@ -240,10 +198,6 @@ reduce_lr = keras.callbacks.ReduceLROnPlateau(
     min_lr=1e-7
 )
 
-
-# In[ ]:
-
-
 history = model.fit(
     train_ds,
     validation_data=valid_ds,
@@ -253,19 +207,11 @@ history = model.fit(
     shuffle=False
 )
 
-
-# In[ ]:
-
-
 final_results = model.evaluate(valid_ds, verbose=1, return_dict=True)
 
 print("\nFinal restored model evaluation:")
 for name, value in final_results.items():
     print(f"{name}: {value:.4f}")
-
-
-# In[ ]:
-
 
 def plot_training_history(history):
     # loss graph
@@ -303,10 +249,6 @@ def plot_training_history(history):
 
 plot_training_history(history)
 
-
-# In[ ]:
-
-
 # threshold tuning
 def test_thresholds(model, dataset, thresholds=[0.30, 0.35, 0.40, 0.45, 0.50]):
     y_true = []
@@ -339,10 +281,6 @@ def test_thresholds(model, dataset, thresholds=[0.30, 0.35, 0.40, 0.45, 0.50]):
 
 test_thresholds(model, valid_ds)
 
-
-# In[ ]:
-
-
 def get_validation_predictions(model, dataset, valid_df, threshold=0.4):
     y_true = []
     y_probs = []
@@ -364,10 +302,6 @@ def get_validation_predictions(model, dataset, valid_df, threshold=0.4):
     pred_df["correct"] = pred_df["y_true"] == pred_df["y_pred"]
 
     return pred_df
-
-
-# In[ ]:
-
 
 def evaluate_body_part_accuracies(pred_df):
     results = []
@@ -398,10 +332,6 @@ def evaluate_body_part_accuracies(pred_df):
     print(results_df.to_string(index=False))
 
     return results_df
-
-
-# In[ ]:
-
 
 # confusion matrix input desired threshold
 def make_confusion_matrix(model, dataset, threshold):
@@ -435,10 +365,6 @@ def make_confusion_matrix(model, dataset, threshold):
     ))
 make_confusion_matrix(model, valid_ds, threshold=0.45)
 
-
-# In[ ]:
-
-
 threshold = 0.45
 
 valid_predictions_df = get_validation_predictions(
@@ -449,10 +375,6 @@ valid_predictions_df = get_validation_predictions(
 )
 
 body_part_results = evaluate_body_part_accuracies(valid_predictions_df)
-
-
-# In[ ]:
-
 
 def gradcam_heatmap(image, model, base_model, last_conv_layer_name="out_relu"):
     if len(image.shape) == 3:
@@ -516,10 +438,6 @@ def overlay_heatmap(image, heatmap, alpha=0.25, power=0.8):
 
     return overlay
 
-
-# In[ ]:
-
-
 def get_correct_examples(model, dataset, threshold=0.4, num_normal=4, num_abnormal=5):
     normal_examples = []
     abnormal_examples = []
@@ -575,10 +493,6 @@ def get_correct_examples(model, dataset, threshold=0.4, num_normal=4, num_abnorm
 
     return selected_examples
 
-
-# In[ ]:
-
-
 def show_selected_originals(examples):
     plt.figure(figsize=(12, 12))
 
@@ -603,10 +517,6 @@ def show_selected_originals(examples):
 
     plt.tight_layout()
     plt.show()
-
-
-# In[ ]:
-
 
 def show_selected_gradcam(examples, model, base_model, alpha=0.25):
     plt.figure(figsize=(12, 12))
@@ -642,10 +552,6 @@ def show_selected_gradcam(examples, model, base_model, alpha=0.25):
     plt.tight_layout()
     plt.show()
 
-
-# In[ ]:
-
-
 selected_examples = get_correct_examples(
     model,
     valid_ds,
@@ -662,10 +568,6 @@ show_selected_gradcam(
     base_model,
     alpha=0.25
 )
-
-
-# In[ ]:
-
 
 # looks at test batch from intial testing (current commented out)
 """
@@ -706,10 +608,3 @@ def show_heatmap(model, base_model, dataset, threshold=0.4, max_images=9):
 
 show_heatmap(model, base_model, valid_ds, threshold=0.4)
 """
-
-
-# In[ ]:
-
-
-
-
