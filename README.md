@@ -2,9 +2,9 @@
 
 ## Musculoskeletal Abnormality Detection CNN Project
 
-MADlens is a prototype X-ray image classifier built to detect **normal vs. abnormal** musculoskeletal X-ray cases using a convolutional neural network.
+MADlens is a prototype X-ray image classifier built to detect **normal vs. abnormal** musculoskeletal X-ray cases using a convolutional neural network with Tensorflow.
 
-> **Goal:** Create a mock assistive tool for radiologists in a simulated setting, not a replacement for medical professionals.
+> **Goal:** Create a mock automated support tool for radiologists in a simulated setting, not a replacement for medical professionals.
 
 The purpose of this project is to explore how computer vision could help save time, support radiologists in identifying abnormalities, and potentially flag cases that may need closer review.
 
