@@ -35,3 +35,6 @@ ENV/
 Thumbs.db
 .idea/
 .vscode/
+
+# Generated anatomy experiment output
+anatomy_specific_results/
