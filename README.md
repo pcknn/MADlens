@@ -147,3 +147,53 @@ You can also run the Python script directly:
 ```bash
 python main.py
 ```
+
+### Regression tree and random forest experiments
+
+All three entry scripts support the same method options:
+
+| Workflow | Script | Tree results folder |
+| --- | --- | --- |
+| All seven body parts pooled | `main.py` | `pooled_tree_results/` |
+| One model per body part | `main_anatomy_specific.py` | `anatomy_specific_tree_results/` |
+| Three overlapping anatomy groups | `main_anatomy_group.py` | `anatomy_tree_results/` |
+
+```bash
+python main.py --method trees
+python main_anatomy_specific.py --method trees
+python main_anatomy_group.py --method trees
+```
+
+Replace `trees` with `regression_tree` or `random_forest` to run just one method.
+Omit `--method` or use `--method cnn` to run the original CNN workflow.
+All tree workflows use the same frozen MobileNetV2 features, estimator settings,
+class weighting, evaluation metrics, and original train/validation splits.
+
+Run the additional methods with:
+
+```bash
+python main_anatomy_tree.py
+```
+
+This combines frozen, ImageNet-pretrained MobileNetV2 image features with a
+`DecisionTreeRegressor` and a `RandomForestClassifier`. Both methods use the
+original training split for fitting and the validation split for evaluation,
+with class weights computed from training labels. No validation images are used
+to fit the models. The regression tree learns the binary labels as numeric
+targets; its output is an abnormality score, with 0.50 as the classification
+cutoff. These scores are not calibrated probabilities.
+
+Each method runs on wrist/hand/finger, forearm/wrist, and shoulder/humerus.
+Wrist images participate in both relevant groups; elbow is excluded. Parameters
+are fixed in `build_estimators()` rather than selected using validation results.
+Support vector machines are deferred.
+
+Results are saved under `anatomy_tree_results/`, including a combined
+`all_tree_results.csv`, per-model metrics, confusion matrices, validation
+predictions, and fitted estimators. The saved `feature_extractor.keras` includes
+MobileNetV2 preprocessing; provide resized RGB pixels in the range 0–255 when
+using it. The extractor path in each `model.joblib` is relative to that file's
+directory. Compare the summary metrics with the CNN results from
+`python main_anatomy_group.py`; the new script does not retrain the CNN head.
+The first run may download ImageNet weights. Feature extraction and forest
+training can take substantial time and memory on the full dataset.

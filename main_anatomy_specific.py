@@ -1,3 +1,7 @@
+if __name__ == "__main__":
+    from experiment_options import dispatch_tree_method
+    dispatch_tree_method("specific")
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf

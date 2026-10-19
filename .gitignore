@@ -38,3 +38,6 @@ Thumbs.db
 
 # Generated anatomy experiment output
 anatomy_group_results/
+anatomy_tree_results/
+anatomy_specific_tree_results/
+pooled_tree_results/
