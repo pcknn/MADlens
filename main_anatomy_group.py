@@ -1,3 +1,12 @@
+from evaluation import (
+    collect_predictions,
+    evaluate_by_anatomy,
+    evaluate_predictions,
+    export_predictions,
+    point_metrics,
+    prediction_frame,
+    print_metrics,
+)
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -6,14 +15,7 @@ from pathlib import Path
 from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn.metrics import (
-    confusion_matrix,
     ConfusionMatrixDisplay,
-    classification_report,
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
 )
 import json
 
@@ -182,39 +184,10 @@ def make_callbacks(run_dir):
 # evaluations
 
 
-def collect_predictions(model, dataset):
-    y_true = []
-    y_probs = []
-
-    for images, labels in dataset:
-        probs = model.predict(images, verbose=0).flatten()
-        y_true.extend(labels.numpy().astype(int))
-        y_probs.extend(probs)
-
-    return np.asarray(y_true), np.asarray(y_probs)
-
-
-def calculate_metrics(y_true, y_probs, threshold=DECISION_THRESHOLD):
-    y_pred = (y_probs >= threshold).astype(int)
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    tn, fp, fn, tp = cm.ravel()
-
-    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-
-    metrics = {
-        "threshold": threshold,
-        "accuracy": accuracy_score(y_true, y_pred),
-        "auc": roc_auc_score(y_true, y_probs),
-        "precision": precision_score(y_true, y_pred, zero_division=0),
-        "recall_sensitivity": recall_score(y_true, y_pred, zero_division=0),
-        "specificity": specificity,
-        "f1_score": f1_score(y_true, y_pred, zero_division=0),
-        "true_negative": int(tn),
-        "false_positive": int(fp),
-        "false_negative": int(fn),
-        "true_positive": int(tp),
-    }
-
+def calculate_metrics(y_true, y_probs, validation_df, threshold=DECISION_THRESHOLD):
+    predictions = prediction_frame(validation_df, y_true, y_probs, threshold)
+    metrics = evaluate_predictions(predictions)
+    _, cm = point_metrics(y_true, y_probs, predictions["prediction"].to_numpy())
     return metrics, cm
 
 
@@ -302,7 +275,7 @@ def train_anatomy_model(group_name, body_parts, train_df, valid_df):
     )
 
     y_true, y_probs = collect_predictions(model, valid_ds)
-    metrics, cm = calculate_metrics(y_true, y_probs)
+    metrics, cm = calculate_metrics(y_true, y_probs, valid_part)
 
     best_epoch = int(np.argmax(history.history["val_auc"]) + 1)
     best_val_auc = float(np.max(history.history["val_auc"]))
@@ -330,27 +303,17 @@ def train_anatomy_model(group_name, body_parts, train_df, valid_df):
     with open(run_dir / "metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
-    predictions_df = valid_part.reset_index(drop=True).copy()
-    predictions_df["abnormal_probability"] = y_probs
-    predictions_df["prediction"] = (y_probs >= DECISION_THRESHOLD).astype(int)
-    predictions_df["correct"] = predictions_df["label"] == predictions_df["prediction"]
-    predictions_df.to_csv(run_dir / "validation_predictions.csv", index=False)
+    predictions_df = prediction_frame(valid_part, y_true, y_probs, DECISION_THRESHOLD)
+    export_predictions(predictions_df, run_dir / "validation_predictions.csv")
 
+    evaluate_by_anatomy(predictions_df).to_csv(run_dir / "body_part_metrics.csv", index=False)
     save_history_plots(history, group_name, run_dir)
     save_confusion_matrix(cm, group_name, run_dir)
 
     model.save(run_dir / f"{group_name.lower()}_specialist.keras")
 
     print("\nFinal specialist metrics:")
-    for key in [
-        "accuracy",
-        "auc",
-        "precision",
-        "recall_sensitivity",
-        "specificity",
-        "f1_score",
-    ]:
-        print(f"  {key}: {summary[key]:.4f}")
+    print_metrics(metrics)
 
     del model
     keras.backend.clear_session()
@@ -414,10 +377,14 @@ def main():
         "recall_sensitivity",
         "specificity",
         "f1_score",
+        "average_precision",
+        "cohen_kappa",
         "best_epoch_by_val_auc",
     ]
 
     print(f"ALL {len(ANATOMY_GROUPS)} ANATOMY GROUP MODELS COMPLETE")
+    display_columns += [c for c in results_df if c.endswith(("_ci_lower", "_ci_upper"))]
+    print("AUC = AUROC; average_precision = Average Precision (AP)")
     print(results_df[display_columns].to_string(index=False))
     print(f"\nSaved master results to: {RESULTS_ROOT / 'all_group_results.csv'}")
 

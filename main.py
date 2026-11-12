@@ -1,3 +1,15 @@
+import matplotlib
+
+# Use a file renderer for command-line runs.
+matplotlib.use("Agg")
+
+from evaluation import (
+    collect_predictions,
+    evaluate_by_anatomy,
+    prediction_frame,
+    report_thresholds,
+    save_validation_report,
+)
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -9,20 +21,23 @@ from sklearn.metrics import (
     confusion_matrix,
     ConfusionMatrixDisplay,
     classification_report,
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
 )
 
 DATA_ROOT = Path("MURA-v1.1_files")
+RESULTS_ROOT = Path("pooled_results")
 
 TRAIN_IMAGE_CSV = DATA_ROOT / "train_image_paths.csv"
 VALID_IMAGE_CSV = DATA_ROOT / "valid_image_paths.csv"
 
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
+DECISION_THRESHOLD = 0.5
+
+
+def save_plot(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
 
 
 def get_label(path):
@@ -129,7 +144,7 @@ for images, labels in train_ds.take(1):
         plt.title(title)
         plt.axis("off")
 
-    plt.show()
+    save_plot(RESULTS_ROOT / "training_batch.png")
 
 
 for images, labels in valid_ds.take(1):
@@ -149,7 +164,7 @@ for images, labels in valid_ds.take(1):
         plt.title(title)
         plt.axis("off")
 
-    plt.show()
+    save_plot(RESULTS_ROOT / "validation_batch.png")
 
 
 # weights from test.py
@@ -248,7 +263,7 @@ def plot_training_history(history):
     plt.ylabel("Loss")
     plt.legend()
     plt.grid(True)
-    plt.show()
+    save_plot(RESULTS_ROOT / "loss_history.png")
 
     # AUC graph
     plt.figure(figsize=(8, 5))
@@ -259,7 +274,7 @@ def plot_training_history(history):
     plt.ylabel("AUC")
     plt.legend()
     plt.grid(True)
-    plt.show()
+    save_plot(RESULTS_ROOT / "auc_history.png")
 
     # accuracy graph
     plt.figure(figsize=(8, 5))
@@ -270,109 +285,31 @@ def plot_training_history(history):
     plt.ylabel("Accuracy")
     plt.legend()
     plt.grid(True)
-    plt.show()
+    save_plot(RESULTS_ROOT / "accuracy_history.png")
 
 
 plot_training_history(history)
 
 
 # threshold tuning
-def test_thresholds(model, dataset, thresholds=[0.30, 0.35, 0.40, 0.45, 0.50]):
-    y_true = []
-    y_probs = []
-
-    for images, labels in dataset:
-        predictions = model.predict(images, verbose=0)
-
-        y_true.extend(labels.numpy().astype(int))
-        y_probs.extend(predictions.flatten())
-
-    y_true = np.array(y_true)
-    y_probs = np.array(y_probs)
-
-    print("\nThreshold Results:")
-
-    for threshold in thresholds:
-        y_pred = (y_probs >= threshold).astype(int)
-
-        accuracy = accuracy_score(y_true, y_pred)
-        precision = precision_score(y_true, y_pred, zero_division=0)
-        recall = recall_score(y_true, y_pred, zero_division=0)
-        f1 = f1_score(y_true, y_pred, zero_division=0)
-
-        print(f"\nThreshold: {threshold}")
-        print(f"Accuracy:  {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall:    {recall:.4f}")
-        print(f"F1-score:  {f1:.4f}")
+def test_thresholds(model, dataset, validation_df, thresholds=[0.30, 0.35, 0.40, 0.45, 0.50]):
+    report_thresholds(model, dataset, validation_df, thresholds)
 
 
-test_thresholds(model, valid_ds)
+test_thresholds(model, valid_ds, valid_df)
 
 
-def get_validation_predictions(model, dataset, valid_df, threshold=0.50):
-    y_true = []
-    y_probs = []
-
-    for images, labels in dataset:
-        predictions = model.predict(images, verbose=0).flatten()
-
-        y_true.extend(labels.numpy().astype(int))
-        y_probs.extend(predictions)
-
-    y_true = np.array(y_true)
-    y_probs = np.array(y_probs)
-    y_pred = (y_probs >= threshold).astype(int)
-
-    pred_df = valid_df.reset_index(drop=True).copy()
-    pred_df["y_true"] = y_true
-    pred_df["abnormal_probability"] = y_probs
-    pred_df["y_pred"] = y_pred
-    pred_df["correct"] = pred_df["y_true"] == pred_df["y_pred"]
-
+def get_validation_predictions(model, dataset, valid_df, threshold=DECISION_THRESHOLD):
+    y_true, y_probs = collect_predictions(model, dataset)
+    pred_df = prediction_frame(valid_df, y_true, y_probs, threshold)
+    # Preserve existing dataframe columns used by the notebook reports.
+    pred_df["y_true"] = pred_df["label"]
+    pred_df["y_pred"] = pred_df["prediction"]
     return pred_df
 
 
 def evaluate_body_part_accuracies(pred_df):
-    results = []
-
-    for body_part, group in pred_df.groupby("body_part"):
-        y_true = group["y_true"].values
-        y_pred = group["y_pred"].values
-        y_probs = group["abnormal_probability"].values
-
-        accuracy = accuracy_score(y_true, y_pred)
-        auc = roc_auc_score(y_true, y_probs)
-        precision = precision_score(y_true, y_pred, zero_division=0)
-        recall = recall_score(y_true, y_pred, zero_division=0)
-        f1 = f1_score(y_true, y_pred, zero_division=0)
-
-        cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-        tn, fp, fn, tp = cm.ravel()
-
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-
-        results.append(
-            {
-                "Body Part": body_part,
-                "Total Images": len(group),
-                "Normal Images": int((group["y_true"] == 0).sum()),
-                "Abnormal Images": int((group["y_true"] == 1).sum()),
-                "Accuracy": accuracy,
-                "AUC": auc,
-                "Precision": precision,
-                "Recall": recall,
-                "Specificity": specificity,
-                "F1 Score": f1,
-            }
-        )
-
-    results_df = pd.DataFrame(results)
-
-    print("\nValidation accuracy by body part:")
-    print(results_df.to_string(index=False))
-
-    return results_df
+    return evaluate_by_anatomy(pred_df)
 
 
 # confusion matrix input desired threshold
@@ -395,25 +332,22 @@ def make_confusion_matrix(model, dataset, threshold):
     disp.plot(cmap=plt.cm.Blues)
 
     plt.title(f"Confusion Matrix, threshold={threshold}")
-    plt.savefig(
-        f"confusion_matrix_threshold_{threshold}.png", dpi=300, bbox_inches="tight"
-    )
-    plt.show()
+    save_plot(Path(f"confusion_matrix_threshold_{threshold}.png"))
 
     print("\nClassification Report:")
     print(classification_report(y_true, y_pred, target_names=["Normal", "Abnormal"]))
 
 
-make_confusion_matrix(model, valid_ds, threshold=0.50)
+make_confusion_matrix(model, valid_ds, threshold=DECISION_THRESHOLD)
 
-
-threshold = 0.50
 
 valid_predictions_df = get_validation_predictions(
-    model, valid_ds, valid_df, threshold=threshold
+    model, valid_ds, valid_df, threshold=DECISION_THRESHOLD
 )
 
+save_validation_report(valid_predictions_df, RESULTS_ROOT)
 body_part_results = evaluate_body_part_accuracies(valid_predictions_df)
+body_part_results.to_csv(RESULTS_ROOT / "body_part_metrics.csv", index=False)
 
 
 def gradcam_heatmap(image, model, base_model, last_conv_layer_name="out_relu"):
@@ -477,7 +411,7 @@ def overlay_heatmap(image, heatmap, alpha=0.25, power=0.8):
     return overlay
 
 
-def get_correct_examples(model, dataset, threshold=0.50, num_normal=4, num_abnormal=5):
+def get_correct_examples(model, dataset, threshold=DECISION_THRESHOLD, num_normal=4, num_abnormal=5):
     normal_examples = []
     abnormal_examples = []
 
@@ -551,7 +485,7 @@ def show_selected_originals(examples):
         plt.axis("off")
 
     plt.tight_layout()
-    plt.show()
+    save_plot(RESULTS_ROOT / "selected_originals.png")
 
 
 def show_selected_gradcam(examples, model, base_model, alpha=0.25):
@@ -582,11 +516,11 @@ def show_selected_gradcam(examples, model, base_model, alpha=0.25):
         plt.axis("off")
 
     plt.tight_layout()
-    plt.show()
+    save_plot(RESULTS_ROOT / "selected_gradcam.png")
 
 
 selected_examples = get_correct_examples(
-    model, valid_ds, threshold=0.50, num_normal=4, num_abnormal=5
+    model, valid_ds, threshold=DECISION_THRESHOLD, num_normal=4, num_abnormal=5
 )
 
 show_selected_originals(selected_examples)
@@ -595,7 +529,7 @@ show_selected_gradcam(selected_examples, model, base_model, alpha=0.25)
 
 # looks at test batch from intial testing (current commented out)
 """
-def show_heatmap(model, base_model, dataset, threshold=0.50, max_images=9):
+def show_heatmap(model, base_model, dataset, threshold=DECISION_THRESHOLD, max_images=9):
     for images, labels in dataset.take(1):
         predictions = model.predict(images, verbose=0).flatten()
 
@@ -628,7 +562,7 @@ def show_heatmap(model, base_model, dataset, threshold=0.50, max_images=9):
             plt.axis("off")
 
         plt.tight_layout()
-        plt.show()
+        save_plot(RESULTS_ROOT / "validation_gradcam.png")
 
-show_heatmap(model, base_model, valid_ds, threshold=0.50)
+show_heatmap(model, base_model, valid_ds, threshold=DECISION_THRESHOLD)
 """

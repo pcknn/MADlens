@@ -1,15 +1,54 @@
-# Raw dataset
-# See README.md for how to obtain it and where to place it locally.
-MURA-v1.1_files/
+# Stanford MURA dataset, downloads, and manifests
+# Obtain access through Stanford AIMI. Keep local dataset files out of Git.
+MURA-v*/
+MURA-v*.zip
+MURA-v*.tar
+MURA-v*.tar.gz
+MURA-v*.tgz
+train_image_paths.csv
+valid_image_paths.csv
+train_labeled_studies.csv
+valid_labeled_studies.csv
 
-# Model artifacts / training outputs
+# Generated experiment outputs. These can contain per-image records or radiographs.
+/pooled_results/
+/anatomy_specific_results/
+/anatomy_group_results/
+/comparison_results/
+validation_predictions.csv
+training_batch.png
+validation_batch.png
+selected_originals.png
+selected_gradcam.png
+validation_gradcam.png
+confusion_matrix_threshold_*.png
+
+# Local model artifacts and training logs
 *.h5
+*.hdf5
 *.keras
 *.ckpt
+*.ckpt.*
 checkpoints/
 saved_model/
 logs/
-confusion_matrix_threshold_*.png
+*.log
+
+# Local environment values and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.envrc.local
+.netrc
+.pypirc
+.aws/
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Python
 __pycache__/
@@ -20,6 +59,10 @@ build/
 dist/
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Virtual environments
 .venv/
@@ -35,6 +78,6 @@ ENV/
 Thumbs.db
 .idea/
 .vscode/
-
-# Generated anatomy experiment output
-anatomy_group_results/
+*.swp
+*.swo
+*~
